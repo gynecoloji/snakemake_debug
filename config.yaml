@@ -1,0 +1,57 @@
+# ============================================================================
+# Low-alignment / contamination diagnostics — configuration (TEMPLATE)
+# Edit the values marked <EDIT>. Paths are relative to `project_dir` unless absolute.
+# ============================================================================
+
+project_dir: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/SnakeMake_RNA_seq_containerization"
+
+input:
+  # Directory of per-sample aligned files that STILL CONTAIN unmapped reads —
+  # i.e. the RAW aligner output (HISAT2/STAR/bwa .sam/.bam), NOT a post-filtered
+  # unique-mapped BAM (which has the unaligned reads removed).
+  align_dir:    "results/hisat2"            # <EDIT> dir of raw aligner output (6 merged per-sample SAMs, GSF4007 dataset)
+  align_suffix: ".sam"                      # <EDIT> ".sam" or ".bam"
+  unmapped_flag: 4                          # SAM flag selecting unmapped reads
+
+output_dir: "alignment_debug"               # results go to <project_dir>/alignment_debug (or set absolute)
+
+host_label: "Homo sapiens"                  # <EDIT> host organism — reporting only
+
+sampling:
+  # These caps bound the motif screen (02), top-seq/BLAST (03/04) and Kraken2 (06).
+  # The bowtie2 genome screens (05 contaminant, 07 custom, 08 top-organism) align
+  # ALL unaligned reads, regardless of these caps.
+  unmapped_cap: 300000                      # max unaligned reads sampled per file (sampled steps)
+  records_cap:  3000000                     # max alignment records scanned per file (bounds I/O)
+
+# --- optional steps: leave the path/flag empty to skip that step ------------
+kraken:
+  db: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/snakemake_debug/refs/kraken_db"
+
+contaminant:
+  reference_fasta: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/snakemake_debug/refs/dm6.fa"
+                                            # (fetch a genome by accession: ./setup.sh --ref-accession GCF_...
+                                            #  or the Drosophila dm6 genome:  ./setup.sh --drosophila)
+
+# --- optional: map unaligned reads to a CUSTOM fasta (transgene / vector / construct) ---
+# Reports per-sample % mapping AND a per-sequence breakdown (which sequence in the fasta the
+# reads hit). Independent of the contaminant genome screen above. "" -> skip step 07.
+custom:
+  fasta: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/snakemake_debug/refs/NICD3-V5_sequences.fasta"
+
+blast:
+  enabled: false                            # remote BLAST of the TOP (most-duplicated) unaligned seqs -> `snakemake blast` on a login node
+  random: false                             # also BLAST RANDOM unaligned reads (login node) to find species Kraken2/motifs miss
+  n_random: 25                              # random reads sampled per sample for the random BLAST
+  db: "nt"
+  max_target_seqs: 5
+
+# --- optional step 08: auto-pick the top NON-HOST organism from the analysis
+# (Kraken2 + random-BLAST), fetch its RefSeq genome from NCBI, and align unaligned
+# reads to it. Needs internet -> run on a login node:
+#   apptainer exec ... snakemake -s Snakefile --configfile config.yaml --cores 4 auto_ref_screen
+auto_ref:
+  enabled: false        # add step 08 to `rule all` (login node); or run the target above directly
+  min_fraction: 0.05    # min support (fraction of classified/BLAST reads) to accept an organism (skips noise)
+
+threads: 8

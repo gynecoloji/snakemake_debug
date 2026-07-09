@@ -1,0 +1,29 @@
+Bootstrap: docker
+From: condaforge/miniforge3:latest
+
+# Self-contained container for the low-alignment / contamination diagnostics
+# Snakemake workflow. Includes Snakemake itself so the whole workflow runs as:
+#     apptainer exec debug_tools.sif snakemake ...
+# Built unprivileged (proot-backed --fakeroot); see containers/build.sh.
+
+%post
+    mamba install -y -c conda-forge -c bioconda \
+        snakemake-minimal \
+        seqtk bowtie2 bwa samtools \
+        blast kraken2 krakentools entrez-direct \
+        curl wget unzip \
+        python=3.10 pandas numpy matplotlib
+    mamba clean -a -y
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    export LC_ALL=C
+    export LANG=C
+
+%test
+    for t in snakemake samtools seqtk bowtie2 bwa blastn kraken2 curl; do command -v $t || exit 1; done
+    python -c "import pandas, matplotlib; print('py ok')"
+
+%labels
+    purpose  low-alignment-contamination-diagnostics
+    tools    snakemake,seqtk,bowtie2,bwa,samtools,blast,kraken2,krakentools,entrez-direct,curl,pandas,matplotlib

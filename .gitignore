@@ -1,0 +1,31 @@
+# --- Built container image (rebuild with setup.sh; exceeds GitHub's 100 MB limit) ---
+containers/*.sif
+containers/proot
+
+# --- Downloaded references / databases (fetched by setup.sh) ---
+refs/
+
+# --- Workflow outputs ---
+results/
+alignment_debug/
+
+# --- Snakemake internals ---
+.snakemake/
+
+# --- Apptainer cache/tmp ---
+.cache/
+.tmp/
+
+# --- Logs (the logs/ dir is kept via .gitkeep) ---
+logs/*.log
+logs/*.out
+logs/*.err
+
+# --- Local / filled-in configs (only the config.yaml template is tracked) ---
+config_run.yaml
+config.*.local.yaml
+*.local.yaml
+
+# --- Python ---
+__pycache__/
+*.pyc
