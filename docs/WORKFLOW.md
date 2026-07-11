@@ -1,8 +1,9 @@
 # Workflow
 
 Low-alignment / contamination diagnostics: take the reads that failed to align to the
-host genome and figure out **what they are**. Each numbered step answers the question a
-different way.
+host genome and figure out **what they are** (steps 01–08). Step **09** instead looks at the
+**multimapped** reads (why they multimap, or — in spike-in mode — the host/spike-in split).
+Each numbered step answers the question a different way.
 
 Two read pools, from two **unnumbered extraction steps**: one pulls a **bounded sample** of the
 unaligned reads (`sampling.*` caps) for the motif (02), top-seq/BLAST (03/04) and Kraken2 (06)
@@ -14,6 +15,7 @@ flowchart TD
     IN[("Raw aligner output<br/>results/hisat2/*.sam<br/>(still contains unmapped reads)")]
 
     IN --> S01["01 · Alignment rate<br/>samtools flagstat"]
+    IN --> SMM["09 · Multimapped reads<br/>NH / bowtie2 XS / MAPQ"]
     IN --> S02["Extract unaligned reads<br/>(bounded sample)"]
     IN --> S07["Extract ALL unaligned reads<br/>(full — for the bowtie2 screens)"]
 
@@ -41,6 +43,7 @@ flowchart TD
     S06 --> OUT
     S08 --> OUT
     S09 --> OUT
+    SMM --> OUT
 
     classDef login stroke-width:2px,stroke-dasharray:5 5
     class B4,B4B,S09 login
@@ -64,6 +67,7 @@ The two **extraction steps** are unnumbered: they feed the screens but don't app
 | **06** | full taxonomic breakdown | Kraken2 | `06_kraken2/` | `kraken.db` |
 | **07** | map to a custom construct (per sequence) | bowtie2 + idxstats | `07_custom_sequences/` | `custom.fasta` |
 | **08** | auto-pick top non-host organism → align to its RefSeq genome | pick + NCBI fetch + bowtie2 | `08_top_organism/` | login · `auto_ref.enabled` |
+| **09** | investigate **multimapped** reads (+ spike-in host/spike-in split) | samtools + NH/XS/MAPQ | `09_multimapped_reads/` | `multimap.enabled` |
 | — | extract unaligned reads — feeds the screens (two pools: bounded sample + all) | `samtools` | `unaligned_reads/` | — |
 | — | figures + interactive report + synthesis | matplotlib / html | `plots/`, `report.html`, `00_SUMMARY.md` | — |
 

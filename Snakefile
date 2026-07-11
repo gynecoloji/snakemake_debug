@@ -28,6 +28,39 @@ RANDOM_ON = bool(config["blast"].get("random", False))
 NRAND     = int(config["blast"].get("n_random", 25))
 AUTO_ON   = bool(config.get("auto_ref", {}).get("enabled", False))
 AUTO_MINF = float(config.get("auto_ref", {}).get("min_fraction", 0.05))
+# Step 09 (multimapped-read investigation) is SPIKE-IN ONLY: it reports the host vs spike-in
+# split + the cross-genome "both genomes" check, which only make sense for a combined host+spike-in
+# alignment. It requires BOTH multimap.enabled AND multimap.spikein; enabled without spikein is
+# skipped with a warning. Steps 01-08 are library-agnostic (spike-in or normal sequencing).
+MM_ENABLED = bool(config.get("multimap", {}).get("enabled", False))
+MM_SPIKE   = bool(config.get("multimap", {}).get("spikein", False))
+MM_ON      = MM_ENABLED and MM_SPIKE
+if MM_ENABLED and not MM_SPIKE:
+    logger.warning("[config] step 09 is spike-in only; multimap.enabled is set but multimap.spikein "
+                   "is not -> skipping step 09 (steps 01-08 still run).")
+MM_PREFIX = config.get("multimap", {}).get("spikein_prefix", "spikein_")
+MM_METHOD = config.get("multimap", {}).get("method", "auto")
+MM_XSSTR  = bool(config.get("multimap", {}).get("xs_strict", False))
+MM_MAPQ   = int(config.get("multimap", {}).get("mapq_max", 10))
+# Step 09 can read a DIFFERENT alignment than the unaligned-analysis steps (01-08): point it at
+# the raw combined host+spike-in BAM (multimappers intact). Empty -> inherit input.align_dir/suffix.
+MM_ALIGN_DIR = A(config.get("multimap", {}).get("align_dir", "") or config["input"]["align_dir"])
+MM_SUF       = config.get("multimap", {}).get("align_suffix", "") or SUF
+# Step 09 cross-genome check (spike-in): of the multimapped reads, how many map to BOTH genomes.
+# Needs SEPARATE host-only and spike-in-only bowtie2 indexes (re-aligns the reads to each).
+MM_HOST_IDX = A(config.get("multimap", {}).get("host_index", "")) if config.get("multimap", {}).get("host_index", "") else ""
+MM_SPK_IDX  = A(config.get("multimap", {}).get("spikein_index", "")) if config.get("multimap", {}).get("spikein_index", "") else ""
+# Enable only when BOTH indexes are set — otherwise skip gracefully (a from-scratch run still
+# produces the report) instead of hard-failing bowtie2 on an empty index path.
+_XG_REQ    = bool(config.get("multimap", {}).get("cross_genome", False))
+MM_XGENOME = _XG_REQ and bool(MM_HOST_IDX) and bool(MM_SPK_IDX)
+if _XG_REQ and not MM_XGENOME:
+    logger.warning("[config] multimap.cross_genome is on but host_index/spikein_index are not "
+                   "both set -> skipping the cross-genome check (rest of step 09 still runs).")
+MM_XFRAC   = float(config.get("multimap", {}).get("cross_fraction", 1.0))   # 1.0 = ALL reads
+MM_XSEED   = int(config.get("multimap", {}).get("cross_seed", 13))
+MM_XCAP    = int(config.get("multimap", {}).get("cross_cap", 0))             # 0 = no cap
+MM_XMARGIN = int(config.get("multimap", {}).get("cross_codominant_margin", 5))
 THREADS   = config["threads"]
 SCRIPTS   = os.path.join(os.path.dirname(os.path.abspath(workflow.snakefile)), "scripts")
 
@@ -35,6 +68,15 @@ SAMPLES, = glob_wildcards(os.path.join(ALIGN_DIR, "{sample}" + SUF))
 SAMPLES  = sorted(s for s in SAMPLES if "/" not in s)
 if not SAMPLES:
     raise WorkflowError(f"No '{SUF}' files found in {ALIGN_DIR}")
+
+# Step 09 sample list: from its own align dir if decoupled, else the main SAMPLES.
+if MM_ON and (MM_ALIGN_DIR != ALIGN_DIR or MM_SUF != SUF):
+    MM_SAMPLES, = glob_wildcards(os.path.join(MM_ALIGN_DIR, "{sample}" + MM_SUF))
+    MM_SAMPLES  = sorted(s for s in MM_SAMPLES if "/" not in s)
+    if not MM_SAMPLES:
+        raise WorkflowError(f"multimap: no '{MM_SUF}' files found in {MM_ALIGN_DIR}")
+else:
+    MM_SAMPLES = SAMPLES
 
 wildcard_constraints:
     sample = r"[^/]+"
@@ -48,6 +90,8 @@ AGG = [
 if KDB: AGG.append(f"{OUT}/06_kraken2/kraken_summary.tsv")
 if REF: AGG.append(f"{OUT}/05_contaminant_genome_screen/contaminant_alignment.tsv")
 if CUSTOM: AGG.append(f"{OUT}/07_custom_sequences/custom_mapping.tsv")
+if MM_ON: AGG.append(f"{OUT}/09_multimapped_reads/multimap_summary.tsv")   # MM_ON => spike-in
+if MM_ON and MM_XGENOME: AGG.append(f"{OUT}/09_multimapped_reads/crossgenome_summary.tsv")
 
 FINAL = AGG + [f"{OUT}/plots/.done", f"{OUT}/00_SUMMARY.md", f"{OUT}/report.html"]
 if BLAST_ON:  FINAL.append(f"{OUT}/03_blast_top_sequences/blast_best_hits.tsv")
@@ -239,6 +283,55 @@ rule aggregate_custom:
     shell:
         "python " + SCRIPTS + "/aggregate_custom.py "
         "--out-mapping {output.mp} --out-perseq {output.ps} --in {input}"
+
+# ---- 09: investigate MULTIMAPPED reads in the raw aligner output (mode-aware) ----
+# Detection auto: NH:i>1 (HISAT2) -> XS present (bowtie2) -> MAPQ<=max (fallback).
+# Spike-in mode: exact host vs spike-in split (idxstats) + the multimapped DISTRIBUTION
+# (what % of each genome's reads multimap, and the top contigs they land on).
+# Reads MM_ALIGN_DIR (may differ from the unaligned-analysis align_dir).
+rule multimap_analysis:
+    input: MM_ALIGN_DIR + "/{sample}" + MM_SUF
+    output:
+        summ = f"{OUT}/09_multimapped_reads/persample/{{sample}}.multimap.tsv",
+        loci = f"{OUT}/09_multimapped_reads/persample/{{sample}}.loci.tsv",
+    params: spike=("--spikein" if MM_SPIKE else ""), prefix=MM_PREFIX, method=MM_METHOD,
+            xs=("--xs-strict" if MM_XSSTR else ""), mapq=MM_MAPQ, rcap=RCAP
+    shell:
+        "python " + SCRIPTS + "/multimap_analysis.py --align {input} --sample {wildcards.sample} "
+        "{params.spike} --spikein-prefix {params.prefix:q} --method {params.method} {params.xs} "
+        "--mapq-max {params.mapq} --records-cap {params.rcap} "
+        "--out {output.summ} --out-loci {output.loci}"
+
+rule aggregate_multimap:
+    input:
+        summ = expand(f"{OUT}/09_multimapped_reads/persample/{{s}}.multimap.tsv", s=MM_SAMPLES),
+        loci = expand(f"{OUT}/09_multimapped_reads/persample/{{s}}.loci.tsv", s=MM_SAMPLES),
+    output:
+        summ = f"{OUT}/09_multimapped_reads/multimap_summary.tsv",
+        loci = f"{OUT}/09_multimapped_reads/top_multimap_loci.tsv",
+    shell:
+        "python " + SCRIPTS + "/aggregate_multimap.py --out-summary {output.summ} "
+        "--out-loci {output.loci} --in {input.summ} --in-loci {input.loci}"
+
+# ---- 09 cross-genome: of the multimapped reads, how many map to BOTH genomes ----
+# Re-aligns a sample of multimapped reads to the host-only and spike-in-only indexes.
+rule crossgenome_analysis:
+    input: MM_ALIGN_DIR + "/{sample}" + MM_SUF
+    output: f"{OUT}/09_multimapped_reads/crossgenome/{{sample}}.crossgenome.tsv"
+    params: host=MM_HOST_IDX, spk=MM_SPK_IDX, prefix=MM_PREFIX, frac=MM_XFRAC,
+            seed=MM_XSEED, cap=MM_XCAP, margin=MM_XMARGIN
+    threads: THREADS
+    shell:
+        "python " + SCRIPTS + "/crossgenome_analysis.py --align {input} --sample {wildcards.sample} "
+        "--host-index {params.host:q} --spikein-index {params.spk:q} "
+        "--spikein-prefix {params.prefix:q} --fraction {params.frac} --seed {params.seed} "
+        "--cap {params.cap} --codominant-margin {params.margin} --threads {threads} --out {output}"
+
+rule aggregate_crossgenome:
+    input: expand(f"{OUT}/09_multimapped_reads/crossgenome/{{s}}.crossgenome.tsv", s=MM_SAMPLES)
+    output: f"{OUT}/09_multimapped_reads/crossgenome_summary.tsv"
+    shell:
+        "python " + SCRIPTS + "/aggregate_crossgenome.py --out-summary {output} --in {input}"
 
 # ---- plots + summary --------------------------------------------------------
 rule plots:

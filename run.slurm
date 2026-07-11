@@ -10,8 +10,8 @@
 #SBATCH --mem=48G
 #SBATCH --time=08:00:00
 #SBATCH --output=logs/debug_%j.out
-#SBATCH --account=2016502
-#SBATCH --partition=general
+##SBATCH --account=YOUR_ACCOUNT
+##SBATCH --partition=YOUR_PARTITION
 set -euo pipefail
 HERE="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")" && pwd)}"   # under SLURM, $0 is the spooled copy; use the submit dir
 module load apptainer/1.4.1-u7wa 2>/dev/null || true

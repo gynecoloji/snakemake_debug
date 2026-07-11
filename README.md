@@ -20,9 +20,15 @@ No host Python, no host Snakemake, no per-tool modules.
 
 ## What it does
 
-See **[`docs/WORKFLOW.md`](docs/WORKFLOW.md)** for the workflow diagram. Each numbered step takes the
-unaligned reads (from the extraction steps) and identifies what they are a different way. The two
-extraction steps (marked `—`) feed the screens but are not report sections.
+See **[`docs/WORKFLOW.md`](docs/WORKFLOW.md)** for the workflow diagram. Steps 02–08 take the
+**unaligned** reads (from the extraction steps) and identify what they are a different way; step 09
+instead investigates the **multimapped** reads. The two extraction steps (marked `—`) feed the
+unaligned-read screens but are not report sections.
+
+> **Spike-in vs normal sequencing:** steps **01–08 apply to any short-read library** (spike-in or
+> normal). **Step 09 is spike-in-only** — it splits reads into host vs spike-in genome and checks
+> cross-genome mapping, which only makes sense for a combined host+spike-in alignment. It is optional
+> and off by default.
 
 | step | folder | question | tool |
 |---|---|---|---|
@@ -36,10 +42,13 @@ extraction steps (marked `—`) feed the screens but are not report sections.
 | — | `unaligned_reads/*.all_unaligned.fq.gz` | extract **all** unaligned reads for the bowtie2 screens (05/07/08) | `samtools view -f 4` |
 | 07 | `07_custom_sequences/` | map to a custom construct (per sequence) | bowtie2 + idxstats |
 | 08 | `08_top_organism/` | auto-pick top non-host organism → align to its RefSeq genome | pick + NCBI + bowtie2 |
+| 09 | `09_multimapped_reads/` | **(spike-in only)** multimapped reads: host vs spike-in split & per-genome rate, top loci, and the % mapping to **both** genomes | samtools + NH/XS/MAPQ; bowtie2 |
 | — | `plots/`, `report.html`, `00_SUMMARY.md` | figures + interactive report + synthesis | matplotlib / html |
 
-Steps 03/04/05/06/07/08 are **optional** — enabled by their config fields. Steps 03, 04 and 08
-need internet, so run them on a **login node**.
+Steps 03/04/05/06/07/08/09 are **optional** — enabled by their config fields. Steps 03, 04 and 08
+need internet, so run them on a **login node**; step 09 runs **offline** and is **spike-in only**
+(requires `multimap.enabled` **and** `multimap.spikein`; enabling it for a normal library is skipped
+with a warning — see [Step 09](#step-09-multimapped-reads-spike-in-only)).
 
 ---
 
@@ -58,6 +67,12 @@ inside the container. You only need:
 
 Your **input** is one directory of per-sample aligner output (`.sam`/`.bam`) that **still
 contains the unmapped reads** (see [Input layout](#input-layout)).
+
+> **No LLM or Claude Code needed to run this.** Everything — including `report.html` — is plain
+> Python plus the tools in the container. `build_report.py` (Python stdlib only) and
+> `make_plots.py` (matplotlib) read the step TSVs and emit a **deterministic, self-contained**
+> report offline: the same inputs always produce the same HTML, on any machine. Claude Code was
+> used only to *develop* the scripts, never at runtime.
 
 ---
 
@@ -126,7 +141,9 @@ Everything is written under `output_dir`. Read them in this order:
 1. **`00_SUMMARY.md`** — start here. A human-readable synthesis: which samples are low,
    what the signatures/BLAST/Kraken2 point at, and the likely cause.
 2. **`plots/`** — figures for a quick visual scan: `alignment_rate.png`, `signature_composition.png`,
-   and (when the optional steps run) `bacterial_fraction.png`, `contaminant_mapping.png`, `library_composition.png`.
+   and (when the optional steps run) `bacterial_fraction.png`, `contaminant_mapping.png`, `library_composition.png`,
+   and the step-09 set (`multimap_composition.png`, `multimap_by_genome.png`, `multimap_loci.png`,
+   `multimap_crossgenome.png`, `multimap_crossgenome_composition.png`).
 3. **`01_alignment_summary/alignment_summary.tsv`** — mapped % per sample.
 4. **`02_sequence_signatures/signature_fractions.tsv`** — per-sample fraction of unaligned reads
    matching bacterial 16S / Illumina adapter / polyA / host-repeat motifs.
@@ -136,6 +153,11 @@ Everything is written under `output_dir`. Read them in this order:
    unaligned reads that map to your suspect genome.
 7. **`06_kraken2/kraken_summary.tsv`** + `top_species_overall.tsv` *(if a DB given)* — full
    taxonomic breakdown of the unaligned reads.
+
+8. **`09_multimapped_reads/`** *(if `multimap.enabled`)* — `multimap_summary.tsv` (% multimapped,
+   host vs spike-in split, per-genome multimapping rate), `top_multimap_loci.tsv`, and
+   `crossgenome_summary.tsv` *(if `multimap.cross_genome`)* — % of multimapped reads mapping to
+   **both** genomes. See [Step 09](#step-09-multimapped-reads-spike-in-only).
 
 Raw per-sample unaligned reads are kept in `unaligned_reads/<sample>.unaligned.fq.gz` if you
 want to investigate further by hand.
@@ -181,6 +203,66 @@ into `config.yaml`.
 
 ---
 
+## Step 09: multimapped reads (spike-in only)
+
+Independent of the unaligned-read screens (01–08), step 09 investigates the reads that aligned to
+**multiple** locations of a **combined host + spike-in genome**. It is **spike-in only** and
+**optional** — enable with both `multimap.enabled: true` **and** `multimap.spikein: true`. Enabling
+it for a normal (non-spike-in) library is skipped with a warning, since the host/spike-in split and
+cross-genome check have no meaning without a spike-in genome. (Steps 01–08 run for any library.)
+
+- **Detection is aligner-aware (auto):** `NH:i > 1` (HISAT2/STAR) → `XS` present (bowtie2 — this
+  reproduces bowtie2's own ">1 time" alignment rate) → `MAPQ ≤ mapq_max` (fallback when tags are
+  stripped). Override with `multimap.method`.
+- **Point it at the raw alignment** (multimappers not yet removed). Step 09 can read a **different**
+  file than steps 01–08 via `multimap.align_dir` / `multimap.align_suffix` (empty ⇒ inherit `input.*`).
+- **Outputs** (`09_multimapped_reads/`): `multimap_summary.tsv` (% multimapped, host vs spike-in
+  split, and what fraction of each genome's reads multimap) and `top_multimap_loci.tsv` (the contigs
+  the multimappers land on — usually chrM and repeats).
+
+### Host vs spike-in split
+
+Spike-in contigs are identified by a prefix (`multimap.spikein_prefix`, e.g. `spikein_`).
+`samtools idxstats` gives the exact host vs spike-in split over all reads; the report shows the
+split, the per-genome multimapping rate, and the top loci the multimappers land on.
+
+### Cross-genome check — `multimap.cross_genome: true`
+
+Of the multimapped reads, how many map to **both** genomes? These are the ambiguous reads that can
+distort spike-in normalization. The combined BAM only keeps each read's best location (and exhaustive
+`bowtie2 -a` is intractable on repeats), so this **re-aligns** the multimapped reads separately to
+**host-only** and **spike-in-only** indexes and classifies each read/fragment as
+**host-only / spike-only / both / neither**, plus **codominant** (an equally-good hit in each genome
+= genuinely ambiguous). Paired-end BAMs are re-aligned paired-end (fragment-level, matching a typical
+spike-in pipeline), which is auto-detected.
+
+This is the one step-09 feature that needs a bit of setup — **single-genome bowtie2 indexes**:
+
+```yaml
+multimap:
+  enabled:        true
+  spikein:        true
+  spikein_prefix: "spikein_"
+  cross_genome:   true
+  host_index:     "ref/HG38/genome"   # bowtie2 index basename, host only
+  spikein_index:  "ref/DM6/genome"    # bowtie2 index basename, spike-in only
+```
+
+Build the two indexes once (inside the container), from the same FASTAs used for the combined genome:
+
+```bash
+apptainer exec containers/debug_tools.sif bowtie2-build --threads 16 host.fa    ref/HG38/genome
+apptainer exec containers/debug_tools.sif bowtie2-build --threads 16 spikein.fa ref/DM6/genome
+```
+
+All multimapped reads are used by default (`cross_fraction: 1.0`, `cross_cap: 0`); set
+`cross_fraction < 1` (or `cross_cap > 0`) to sample uniformly on very large inputs. Output:
+`09_multimapped_reads/crossgenome_summary.tsv` (+ the `multimap_crossgenome*.png` plots and a report
+card). This step is compute-heavy (it re-aligns millions of repeat reads) — give the job plenty of
+cores; e.g. this project's 6 samples took ~11 min single-end / ~78 min paired-end on 32 cores.
+
+---
+
 ## config.yaml reference
 
 | key | meaning |
@@ -196,6 +278,13 @@ into `config.yaml`.
 | `contaminant.reference_fasta` | suspect genome FASTA — empty ⇒ skip step 05 |
 | `custom.fasta` | custom FASTA (transgene/vector construct) — unaligned reads mapped to it with a per-sequence breakdown (step 07); empty ⇒ skip |
 | `auto_ref.enabled` | step 08 — auto-pick the top non-host organism (Kraken2 + random-BLAST), fetch its RefSeq genome, align unaligned reads to it (login node). Run: `snakemake … auto_ref_screen` |
+| `multimap.enabled` + `multimap.spikein` | step 09 (**spike-in only**) — investigate multimapped reads; **both** required, enabling without `spikein` is skipped with a warning |
+| `multimap.spikein_prefix` | contigs starting with this prefix are the spike-in genome |
+| `multimap.method` / `xs_strict` / `mapq_max` | override the multimapper detector (`auto`/`nh`/`xs`/`mapq`) |
+| `multimap.align_dir` / `align_suffix` | step-09 input override (the raw combined BAM); empty ⇒ inherit `input.*` |
+| `multimap.cross_genome` | of the multimapped reads, % mapping to **both** genomes (re-aligns to single-genome indexes) |
+| `multimap.host_index` / `spikein_index` | bowtie2 index basenames (host-only / spike-in-only) for the cross-genome check |
+| `multimap.cross_fraction` / `cross_cap` | `1.0` / `0` ⇒ all reads; `<1` / `>0` ⇒ sample for speed |
 | `blast.enabled` | run remote BLAST (login node) |
 | `blast.db` / `blast.max_target_seqs` | remote BLAST database (e.g. `nt`) and hit cap |
 | `threads` | cores per rule |
@@ -211,6 +300,8 @@ into `config.yaml`.
       the suspect organism, then `./setup.sh --ref-accession <GCF_...>` and re-run for step 05
 - [ ] edit `run.slurm` `-A`/`-p` (and `debug_tools.def` tool list if you want more tools)
 - [ ] extend the motif set in `scripts/extract_unaligned.py` for non-bacterial suspects (vector, mito, rRNA)
+- [ ] *(optional, spike-in only)* for step 09's cross-genome check, build single-genome bowtie2
+      indexes and set `multimap.host_index` / `multimap.spikein_index` (see [Step 09](#step-09-multimapped-reads-spike-in-only))
 
 ---
 
@@ -222,6 +313,8 @@ into `config.yaml`.
 | Nothing to diagnose / 0 unaligned reads | you pointed at a filtered unique-mapped BAM — use the **raw** aligner output instead |
 | `apptainer: command not found` | `module load apptainer` (or your cluster's equivalent) on **both** login and compute nodes |
 | BLAST step hangs or errors on a compute node | remote BLAST needs internet — run the `blast` target on the **login** node (see [two phases](#the-two-phases-why-setup-is-separate)) |
+| step 09 `cross_genome` errors / no index found | build the single-genome bowtie2 indexes and set `multimap.host_index` / `spikein_index` (see [Step 09](#step-09-multimapped-reads-spike-in-only)) |
+| step 09 finds 0 multimapped reads | you pointed at a filtered BAM with multimappers already removed — use the **raw** alignment (`multimap.align_dir`) |
 | Kraken2 killed / OOM | the standard-8 DB needs ~10 GB RAM; raise `--mem` in `run.slurm` or use `--no-kraken` |
 | container build fails with permission errors | `setup.sh` builds unprivileged via proot-backed `--fakeroot`; ensure the fetched `containers/proot` is executable |
 | a run was interrupted | re-run — `run.slurm` passes `--rerun-incomplete`; Snakemake resumes from where it stopped |

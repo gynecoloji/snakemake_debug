@@ -58,6 +58,27 @@ def main():
             P(f"- **Custom-sequence (construct) mapping of unaligned reads:** "
               f"{min(vals):.1f}%–{max(vals):.1f}% across samples")
 
+    # multimapped reads (step 09)
+    pmm = f"{O}/09_multimapped_reads/multimap_summary.tsv"
+    if os.path.exists(pmm):
+        m = rd(pmm)
+        vals = [float(x["pct_multimapped"]) for x in m]
+        if vals:
+            P(f"- **Multimapped reads:** {min(vals):.1f}%–{max(vals):.1f}% of mapped reads across samples")
+        spk = [float(x.get("pct_spikein", 0) or 0) for x in m]
+        if any(v > 0 for v in spk):
+            P(f"- **Spike-in genome fraction:** {min(spk):.1f}%–{max(spk):.1f}% of mapped reads "
+              f"(the normalization signal)")
+    pxg = f"{O}/09_multimapped_reads/crossgenome_summary.tsv"
+    if os.path.exists(pxg):
+        x = rd(pxg)
+        b = [float(r["pct_both"]) for r in x]
+        c = [float(r["pct_both_codominant"]) for r in x]
+        if b:
+            P(f"- **Multimapped reads mapping to BOTH genomes:** {min(b):.2f}%–{max(b):.2f}% "
+              f"({min(c):.2f}%–{max(c):.2f}% codominant/ambiguous) — cross-genome mapping that can "
+              f"distort spike-in normalization")
+
     # interpretation hint
     P("\n### Reading this")
     P("- Low alignment confined to a subset of samples + a dominant organism in the "
@@ -75,6 +96,7 @@ def main():
     P("| `05_contaminant_genome_screen/` | reads mapping to the suspect genome |")
     P("| `06_kraken2/` | taxonomic classification |")
     P("| `07_custom_sequences/` | unaligned reads mapped to a custom fasta (per-sequence) |")
+    P("| `09_multimapped_reads/` | multimapped-read investigation (spike-in split, per-genome rate, cross-genome both-genomes %) |")
     P("| `plots/` | figures |")
 
     print("\n".join(L))

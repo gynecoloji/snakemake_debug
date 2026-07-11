@@ -171,6 +171,30 @@ def build_data(O, host, contam_label):
         steps["08"] = {"rows": sorted(rows, key=lambda r: -r["pct"]),
                        "organism": to[0]["organism"], "accession": to[0].get("accession", "")}
 
+    # ---- 09 multimapped reads ----
+    mm = rd(f"{O}/09_multimapped_reads/multimap_summary.tsv")
+    if mm:
+        rows = [{"sample": x["sample"], "method": x.get("method", ""),
+                 "pct_mm": fnum(x["pct_multimapped"], 0.0),
+                 "pct_host": fnum(x.get("pct_host"), 0.0),
+                 "pct_spikein": fnum(x.get("pct_spikein"), 0.0),
+                 "pct_host_mm": fnum(x.get("pct_host_multimapped"), 0.0),
+                 "pct_spikein_mm": fnum(x.get("pct_spikein_multimapped"), 0.0)} for x in mm]
+        spike = any(r["pct_spikein"] > 0 for r in rows)
+        loci = [{"contig": x["contig"], "reads": int(fnum(x.get("multimapped_reads"), 0)),
+                 "pct": fnum(x.get("pct_of_multimapped"), 0.0)}
+                for x in rd(f"{O}/09_multimapped_reads/top_multimap_loci.tsv")]
+        xg = [{"sample": x["sample"], "pct_both": fnum(x.get("pct_both"), 0.0),
+               "pct_codom": fnum(x.get("pct_both_codominant"), 0.0),
+               "pct_host_only": fnum(x.get("pct_host_only"), 0.0),
+               "pct_spike_only": fnum(x.get("pct_spike_only"), 0.0),
+               "pct_neither": fnum(x.get("pct_neither"), 0.0),
+               "n": int(fnum(x.get("n_reads"), 0))}
+              for x in rd(f"{O}/09_multimapped_reads/crossgenome_summary.tsv")]
+        steps["09"] = {"rows": sorted(rows, key=lambda r: -r["pct_mm"]), "spike": spike,
+                       "loci": loci[:12], "method": rows[0]["method"] if rows else "",
+                       "xg": sorted(xg, key=lambda r: -r["pct_both"])}
+
     # ---- whole-library composition: host / top contamination / others ---------
     # Use the precise bowtie2 genome alignment for the dominant contaminant — the
     # auto top-organism screen (step 08) if present, else the step-05 contaminant
@@ -340,6 +364,25 @@ function bars(data, {max, color, label, value, outfmt, tip:tipFn}){
     if(w>16){ fill.appendChild(el('span','bl', txt)); }
     else { const o=el('span','val-out', txt); o.style.setProperty('--w', w+'%'); track.appendChild(o); }
     track.appendChild(fill); if(tipFn) bindTip(fill, tipFn(d));
+    row.appendChild(track); box.appendChild(row);
+  });
+  return box;
+}
+// horizontal bars with a nested overlay (a subset drawn on top, from the same left origin)
+function overlayBars(data, {max, baseColor, overColor, value, over, label, outfmt, tip:tipFn}){
+  const box=el('div','rows');
+  data.forEach(d=>{
+    const wb=Math.max(value(d)/max*100,0), wo=Math.max(over(d)/max*100,0);
+    const row=el('div','row'); row.appendChild(el('div','lab', label(d)));
+    const track=el('div','track');
+    const base=el('div','fill'); base.style.width=wb+'%'; base.style.background=baseColor;
+    const txt=outfmt?outfmt(d):value(d);
+    if(wb>16){ base.appendChild(el('span','bl', txt)); }
+    else { const o=el('span','val-out', txt); o.style.setProperty('--w', wb+'%'); track.appendChild(o); }
+    const ov=el('div','fill'); ov.style.position='absolute'; ov.style.left='0'; ov.style.top='0';
+    ov.style.width=wo+'%'; ov.style.background=overColor; ov.style.borderRadius='5px';
+    track.appendChild(base); track.appendChild(ov);
+    if(tipFn){ bindTip(base, tipFn(d)); bindTip(ov, tipFn(d)); }
     row.appendChild(track); box.appendChild(row);
   });
   return box;
@@ -534,6 +577,84 @@ if(S['08'] && S['08'].rows.length){
     outfmt:d=>d.pct.toFixed(1)+'%',
     tip:d=>'<div class="tt">'+short(d.sample)+'</div><b>'+d.pct.toFixed(2)+'%</b> of unaligned reads map to '+st.organism }));
   s.appendChild(c); root.appendChild(s);
+}
+
+// ---------------- 09 multimapped reads ----------------
+if(S['09'] && S['09'].rows.length){
+  const st=S['09'];
+  const s=section('09','Multimapped reads'+(st.spike?' — spike-in composition':''),
+    'Reads that aligned to multiple locations, from the raw aligner output (detection: '+st.method+'). '+
+    (st.spike ? 'Reads are split into host vs spike-in genome; the multimapped set is then broken down by genome and by the contigs it lands on — the multimapper distribution.'
+              : 'Where they concentrate (below) tells you why — rRNA, repeats, or multi-copy gene families.'));
+  if(st.spike){
+    const segs=[['pct_host',C.human,'Host genome'],['pct_spikein',C.fly,'Spike-in genome']];
+    const c=card('Host vs spike-in genome split (the normalization signal)', 'samtools idxstats over all reads; stacked to 100% of mapped reads. Hover for exact %.');
+    c.appendChild(legend(segs.map(x=>[x[1],x[2]])));
+    c.appendChild(stacked(st.rows, segs,
+      (d,name,v)=>'<div class="tt">'+short(d.sample)+' · '+name+'</div><b>'+v.toFixed(2)+'%</b> of mapped reads'));
+    s.appendChild(c);
+    const pmax=Math.max(...st.rows.map(r=>r.pct_mm), 2);
+    const c2=card('% of mapped reads that are multimapped', 'Aligner-aware ('+st.method+'); for bowtie2 (XS) this reproduces its own ">1 time" alignment rate.');
+    c2.appendChild(bars(st.rows, { max:pmax, color:C.sat, label:d=>short(d.sample), value:d=>d.pct_mm,
+      outfmt:d=>d.pct_mm.toFixed(2)+'%',
+      tip:d=>'<div class="tt">'+short(d.sample)+'</div><b>'+d.pct_mm.toFixed(2)+'%</b> multimapped ('+st.method+')' }));
+    s.appendChild(c2);
+    // multimapper distribution BY GENOME: what fraction of each genome's own reads is ambiguous
+    const byg=[]; st.rows.forEach(d=>{ byg.push({lab:short(d.sample)+' · host',v:d.pct_host_mm,g:'host'});
+                                       byg.push({lab:short(d.sample)+' · spike-in',v:d.pct_spikein_mm,g:'spike-in'}); });
+    const gmax=Math.max(...byg.map(d=>d.v), 2);
+    const c3=card('Multimapping rate within each genome', 'Of the reads assigned to a genome, how many are multimapped. A high spike-in rate means ambiguous spike-in reads that can distort normalization.');
+    c3.appendChild(legend([[C.human,'host'],[C.fly,'spike-in']]));
+    c3.appendChild(bars(byg, { max:gmax, color:d=>d.g==='host'?C.human:C.fly, label:d=>d.lab, value:d=>d.v,
+      outfmt:d=>d.v.toFixed(2)+'%',
+      tip:d=>'<div class="tt">'+d.lab+'</div><b>'+d.v.toFixed(2)+'%</b> of '+d.g+' reads multimapped' }));
+    s.appendChild(c3);
+    s.appendChild(table([{t:'Sample'},{t:'% host',n:1},{t:'% spike-in',n:1},{t:'% multimapped',n:1},{t:'host mm%',n:1},{t:'spike mm%',n:1}],
+      st.rows.map(d=>[short(d.sample), d.pct_host.toFixed(2), d.pct_spikein.toFixed(2), d.pct_mm.toFixed(2), d.pct_host_mm.toFixed(2), d.pct_spikein_mm.toFixed(2)])));
+    if(st.loci.length){
+      const lmax=Math.max(...st.loci.map(d=>d.reads), 1);
+      const c4=card('Where the multimappers land (top contigs)', 'Pooled across samples — host chr* and spike-in contigs the ambiguous reads map to.');
+      c4.appendChild(bars(st.loci, { max:lmax, color:C.noise, label:d=>d.contig, value:d=>d.reads,
+        outfmt:d=>fmtN(d.reads),
+        tip:d=>'<div class="tt">'+d.contig+'</div><b>'+fmtN(d.reads)+'</b> multimapped reads · '+d.pct.toFixed(1)+'%' }));
+      s.appendChild(c4);
+    }
+    if(st.xg && st.xg.length){
+      const xmax=Math.max(...st.xg.map(d=>d.pct_both), 0.5);
+      const c5=card('Multimapped reads that map to BOTH genomes', 'Every multimapped read (paired-end: fragment) re-aligned separately to the host-only and spike-in-only genomes. Bar = % mapping to both; the darker inset = "codominant" (equally-good in each genome → genuinely ambiguous, the reads that distort normalization).');
+      c5.appendChild(legend([[C.sat,'maps to both'],[C.fly,'codominant (ambiguous)']]));
+      c5.appendChild(overlayBars(st.xg, { max:xmax, baseColor:C.sat, overColor:C.fly,
+        value:d=>d.pct_both, over:d=>d.pct_codom, label:d=>short(d.sample),
+        outfmt:d=>d.pct_both.toFixed(2)+'%',
+        tip:d=>'<div class="tt">'+short(d.sample)+' · n='+fmtN(d.n)+'</div><b>'+d.pct_both.toFixed(2)+'%</b> map to both genomes ('+d.pct_codom.toFixed(2)+'% codominant)' }));
+      s.appendChild(c5);
+      const xsegs=[['pct_host_only',C.human,'host-only'],['pct_spike_only',C.fly,'spike-only'],
+                   ['pct_both',C.sat,'both genomes'],['pct_neither',C.uncls,'neither']];
+      const c6=card('Re-alignment outcome of multimapped reads', 'Every multimapped read (paired-end: fragment) re-aligned separately to the host-only and spike-in-only genomes, classified by where it maps. Stacked to 100%.');
+      c6.appendChild(legend(xsegs.map(x=>[x[1],x[2]])));
+      c6.appendChild(stacked(st.xg, xsegs,
+        (d,name,v)=>'<div class="tt">'+short(d.sample)+' · '+name+'</div><b>'+v.toFixed(2)+'%</b> of multimapped reads'));
+      s.appendChild(c6);
+      s.appendChild(table([{t:'Sample'},{t:'reads/pairs',n:1},{t:'% host-only',n:1},{t:'% spike-only',n:1},{t:'% both',n:1},{t:'% codominant',n:1}],
+        st.xg.map(d=>[short(d.sample), fmtN(d.n), d.pct_host_only.toFixed(2), d.pct_spike_only.toFixed(2), d.pct_both.toFixed(3), d.pct_codom.toFixed(3)])));
+    }
+  } else {
+    const pmax=Math.max(...st.rows.map(r=>r.pct_mm), 5);
+    const c=card('% of mapped reads that are multimapped', 'Hover for exact values.');
+    c.appendChild(bars(st.rows, { max:pmax, color:C.sat, label:d=>short(d.sample), value:d=>d.pct_mm,
+      outfmt:d=>d.pct_mm.toFixed(2)+'%',
+      tip:d=>'<div class="tt">'+short(d.sample)+'</div><b>'+d.pct_mm.toFixed(2)+'%</b> multimapped ('+st.method+')' }));
+    s.appendChild(c);
+    if(st.loci.length){
+      const lmax=Math.max(...st.loci.map(d=>d.reads), 1);
+      const c2=card('Where the multimappers concentrate (top contigs)', 'Pooled across samples — the loci driving multimapping.');
+      c2.appendChild(bars(st.loci, { max:lmax, color:C.noise, label:d=>d.contig, value:d=>d.reads,
+        outfmt:d=>fmtN(d.reads),
+        tip:d=>'<div class="tt">'+d.contig+'</div><b>'+fmtN(d.reads)+'</b> multimapped reads · '+d.pct.toFixed(1)+'%' }));
+      s.appendChild(c2);
+    }
+  }
+  root.appendChild(s);
 }
 
 // ---------------- whole-library composition ----------------

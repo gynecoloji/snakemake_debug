@@ -242,6 +242,95 @@ def main():
             fig.tight_layout(); fig.savefig(f"{O}/plots/library_composition.png", dpi=140); plt.close(fig)
             made.append("library_composition.png")
 
+    # 8) multimapped reads (step 09)
+    p = f"{O}/09_multimapped_reads/multimap_summary.tsv"
+    spike = False
+    if os.path.exists(p):
+        r = rd(p)
+        if r:
+            spike = any(float(x.get("pct_spikein", 0) or 0) > 0 for x in r)
+            r.sort(key=lambda x: float(x["pct_multimapped"]))
+            labs = [short(x["sample"]) for x in r]
+            fig, ax = plt.subplots(figsize=(9, max(3, 0.32*len(r))))
+            if spike:
+                host = [float(x["pct_host"]) for x in r]
+                spk = [float(x["pct_spikein"]) for x in r]
+                ax.barh(labs, host, color=HUMAN, label="host genome")
+                ax.barh(labs, spk, left=host, color=FLY, label="spike-in genome")
+                ax.set_xlabel("host vs spike-in genome split (%)"); ax.set_xlim(0, 100)
+                ax.set_title("Spike-in genome split (multimapped % in report)")
+                ax.legend(loc="lower right", frameon=False, fontsize=8)
+            else:
+                ax.barh(labs, [float(x["pct_multimapped"]) for x in r], color=SAT)
+                ax.set_xlabel("% of mapped reads that are multimapped")
+                ax.set_title("Multimapped reads per sample")
+            style(ax); fig.tight_layout()
+            fig.savefig(f"{O}/plots/multimap_composition.png", dpi=140); plt.close(fig)
+            made.append("multimap_composition.png")
+            if spike:   # multimapper distribution BY genome: host mm% vs spike-in mm%
+                y = list(range(len(r)))
+                hmm = [float(x.get("pct_host_multimapped", 0) or 0) for x in r]
+                smm = [float(x.get("pct_spikein_multimapped", 0) or 0) for x in r]
+                fig, ax = plt.subplots(figsize=(9, max(3, 0.42*len(r))))
+                ax.barh([yi-0.2 for yi in y], hmm, height=0.4, color=HUMAN, label="host reads")
+                ax.barh([yi+0.2 for yi in y], smm, height=0.4, color=FLY, label="spike-in reads")
+                ax.set_yticks(y); ax.set_yticklabels(labs)
+                ax.set_xlabel("% of that genome's reads that are multimapped")
+                ax.set_title("Multimapping rate within each genome")
+                ax.legend(loc="lower right", frameon=False, fontsize=8)
+                style(ax); fig.tight_layout()
+                fig.savefig(f"{O}/plots/multimap_by_genome.png", dpi=140); plt.close(fig)
+                made.append("multimap_by_genome.png")
+        pl = f"{O}/09_multimapped_reads/top_multimap_loci.tsv"
+        rr = rd(pl) if os.path.exists(pl) else []
+        if rr:
+            rr = rr[:15][::-1]
+            fig, ax = plt.subplots(figsize=(9, max(3, 0.34*len(rr))))
+            ax.barh([x["contig"] for x in rr], [int(x["multimapped_reads"]) for x in rr], color=NOISE)
+            ax.set_xlabel("multimapped reads (pooled across samples)")
+            ax.set_title("Where multimappers concentrate (top contigs)"); style(ax)
+            fig.tight_layout(); fig.savefig(f"{O}/plots/multimap_loci.png", dpi=140); plt.close(fig)
+            made.append("multimap_loci.png")
+        xgp = f"{O}/09_multimapped_reads/crossgenome_summary.tsv"
+        xg = rd(xgp) if os.path.exists(xgp) else []
+        if xg:
+            xg.sort(key=lambda x: float(x.get("pct_both", 0) or 0))
+            labs = [short(x["sample"]) for x in xg]
+            both = [float(x.get("pct_both", 0) or 0) for x in xg]
+            codom = [float(x.get("pct_both_codominant", 0) or 0) for x in xg]
+            fig, ax = plt.subplots(figsize=(9, max(3, 0.34*len(xg))))
+            ax.barh(labs, both, color=SAT, label="maps to both genomes")
+            ax.barh(labs, codom, color=FLY, label="codominant (ambiguous)")
+            ax.set_xlabel("% of multimapped reads mapping to BOTH genomes")
+            ax.set_title("Cross-genome multimapped reads")
+            ax.legend(loc="lower right", frameon=False, fontsize=8); style(ax)
+            fig.tight_layout(); fig.savefig(f"{O}/plots/multimap_crossgenome.png", dpi=140); plt.close(fig)
+            made.append("multimap_crossgenome.png")
+            # re-alignment outcome composition: host-only / spike-only / both / neither (stacked to 100%)
+            xg.sort(key=lambda x: float(x.get("pct_host_only", 0) or 0))
+            labs = [short(x["sample"]) for x in xg]
+            ho = [float(x.get("pct_host_only", 0) or 0) for x in xg]
+            so = [float(x.get("pct_spike_only", 0) or 0) for x in xg]
+            bo = [float(x.get("pct_both", 0) or 0) for x in xg]
+            ne = [float(x.get("pct_neither", 0) or 0) for x in xg]
+            l1 = ho
+            l2 = [a + b for a, b in zip(ho, so)]
+            l3 = [a + b for a, b in zip(l2, bo)]
+            fig, ax = plt.subplots(figsize=(9, max(3, 0.34*len(xg))))
+            ax.barh(labs, ho, color=HUMAN, label="host-only")
+            ax.barh(labs, so, left=l1, color=FLY, label="spike-only")
+            ax.barh(labs, bo, left=l2, color=SAT, label="both genomes")
+            ax.barh(labs, ne, left=l3, color=GREY, label="neither")
+            ax.set_xlim(0, 100)
+            ax.set_xlabel("% of multimapped reads (re-aligned per genome)")
+            ax.set_title("Re-alignment outcome of multimapped reads")
+            ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=4,
+                      frameon=False, fontsize=8); style(ax)
+            fig.tight_layout()
+            fig.savefig(f"{O}/plots/multimap_crossgenome_composition.png", dpi=140, bbox_inches="tight")
+            plt.close(fig)
+            made.append("multimap_crossgenome_composition.png")
+
     print(f"[plots] wrote: {', '.join(made) if made else '(none)'}")
 
 if __name__ == "__main__":

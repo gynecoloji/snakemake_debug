@@ -3,13 +3,13 @@
 # Edit the values marked <EDIT>. Paths are relative to `project_dir` unless absolute.
 # ============================================================================
 
-project_dir: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/SnakeMake_RNA_seq_containerization"
+project_dir: "/path/to/your/project"        # <EDIT> absolute path to your project
 
 input:
   # Directory of per-sample aligned files that STILL CONTAIN unmapped reads —
   # i.e. the RAW aligner output (HISAT2/STAR/bwa .sam/.bam), NOT a post-filtered
   # unique-mapped BAM (which has the unaligned reads removed).
-  align_dir:    "results/hisat2"            # <EDIT> dir of raw aligner output (6 merged per-sample SAMs, GSF4007 dataset)
+  align_dir:    "results/hisat2"            # <EDIT> dir of raw aligner output
   align_suffix: ".sam"                      # <EDIT> ".sam" or ".bam"
   unmapped_flag: 4                          # SAM flag selecting unmapped reads
 
@@ -26,10 +26,10 @@ sampling:
 
 # --- optional steps: leave the path/flag empty to skip that step ------------
 kraken:
-  db: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/snakemake_debug/refs/kraken_db"
+  db: ""                                    # Kraken2 DB dir (setup.sh prints the path); "" -> skip step 06
 
 contaminant:
-  reference_fasta: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/snakemake_debug/refs/dm6.fa"
+  reference_fasta: ""                       # local FASTA of the suspect genome; "" -> skip step 05
                                             # (fetch a genome by accession: ./setup.sh --ref-accession GCF_...
                                             #  or the Drosophila dm6 genome:  ./setup.sh --drosophila)
 
@@ -37,7 +37,7 @@ contaminant:
 # Reports per-sample % mapping AND a per-sequence breakdown (which sequence in the fasta the
 # reads hit). Independent of the contaminant genome screen above. "" -> skip step 07.
 custom:
-  fasta: "/easley/scratch/projects/amitra/amitra2016502/GSF4007/snakemake_debug/refs/NICD3-V5_sequences.fasta"
+  fasta: ""                                 # custom FASTA path; "" -> skip step 07
 
 blast:
   enabled: false                            # remote BLAST of the TOP (most-duplicated) unaligned seqs -> `snakemake blast` on a login node
@@ -53,5 +53,35 @@ blast:
 auto_ref:
   enabled: false        # add step 08 to `rule all` (login node); or run the target above directly
   min_fraction: 0.05    # min support (fraction of classified/BLAST reads) to accept an organism (skips noise)
+
+# --- optional step 09: MULTIMAPPED-read investigation — SPIKE-IN SEQUENCING ONLY ---
+# (Steps 01-08 above work for BOTH spike-in and normal sequencing; step 09 is the one spike-in-
+# specific step.) Requires BOTH enabled AND spikein below; enabling without spikein is skipped.
+# Needs the PRE-FILTER alignment (multimappers not yet removed) to a COMBINED host+spike-in genome.
+# Detection auto: NH:i>1 (HISAT2) -> XS present (bowtie2, matches its ">1 time" rate) -> MAPQ<=mapq_max.
+# Reports the host vs spike-in split, what % of each genome's reads multimap, the top contigs the
+# multimappers land on, and (cross_genome) the % of multimapped reads mapping to BOTH genomes.
+multimap:
+  enabled: false            # add step 09 (spike-in only — you must ALSO set spikein: true below)
+  spikein: false            # REQUIRED true for step 09: reads aligned to a combined host+spike-in genome
+                            #   (left false so a normal-sequencing run that flips enabled is skipped, not run degenerate)
+  spikein_prefix: "spikein_" # contigs starting with this prefix belong to the spike-in genome
+  method: "auto"            # auto | nh | xs | mapq
+  xs_strict: false          # xs method: require XS == AS (an equally-best 2nd hit) rather than any XS
+  mapq_max: 10              # mapq method / fallback: MAPQ <= this = multimapped
+  # Step 09 can read a DIFFERENT alignment than steps 01-08 (which need unmapped reads). Point
+  # these at the raw COMBINED host+spike-in BAM. Empty -> inherit input.align_dir / align_suffix.
+  align_dir: ""             # e.g. "results/aligned" (raw bowtie2 combined output, indexed .bam)
+  align_suffix: ""          # e.g. ".bam"
+  # Cross-genome check (spike-in only): of the multimapped reads, what % map to BOTH genomes?
+  # Re-aligns a sample of multimapped reads to SEPARATE host-only and spike-in-only bowtie2
+  # indexes (the combined BAM can't answer this; bowtie2 -a is intractable on repeats).
+  cross_genome: false       # enable the both-genomes check
+  host_index: ""            # bowtie2 index basename, host only (e.g. "ref/HG38/genome")
+  spikein_index: ""         # bowtie2 index basename, spike-in only (e.g. "ref/DM6/genome")
+  cross_fraction: 1.0       # 1.0 = ALL multimapped reads; < 1 samples that fraction (faster on huge inputs)
+  cross_cap: 0              # 0 = no cap; > 0 caps sampled reads per file (reservoir, genome-wide)
+  cross_seed: 13            # sampling seed (only used when cross_fraction < 1 or cross_cap > 0)
+  cross_codominant_margin: 5 # "codominant" = |host AS - spike-in AS| <= this (equally-good = ambiguous)
 
 threads: 8
