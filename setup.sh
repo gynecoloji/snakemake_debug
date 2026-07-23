@@ -56,7 +56,7 @@ if [[ $KSIZE != 0 ]]; then
   else
     echo "[setup] Kraken2 DB present: $DB"
   fi
-  echo "[setup]   -> set  kraken.db: \"$DB\"  in config.yaml"
+  echo "[setup]   -> set  kraken.db: \"$DB\"  in config/config.yaml"
 fi
 
 # 3) optional contaminant reference genome ------------------------------------
@@ -68,7 +68,7 @@ if [[ -n $ACC ]]; then
     python3 -c "import zipfile; zipfile.ZipFile('$HERE/refs/$ACC.zip').extractall('$HERE/refs/dl_$ACC')"
     cat "$HERE"/refs/dl_$ACC/ncbi_dataset/data/"$ACC"/*.fna > "$RF"
   fi
-  echo "[setup]   -> set  contaminant.reference_fasta: \"$RF\"  in config.yaml"
+  echo "[setup]   -> set  contaminant.reference_fasta: \"$RF\"  in config/config.yaml"
 fi
 
 # 4) convenience: Drosophila melanogaster dm6 genome (UCSC) ------------------
@@ -81,6 +81,6 @@ if [[ $DMEL == 1 ]]; then
   else
     echo "[setup] dm6 genome present: $DM"
   fi
-  echo "[setup]   -> set  contaminant.reference_fasta: \"$DM\"  in config.yaml"
+  echo "[setup]   -> set  contaminant.reference_fasta: \"$DM\"  in config/config.yaml"
 fi
 echo "[setup] done."

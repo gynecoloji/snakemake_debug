@@ -1,0 +1,18 @@
+# ── Language statistics ─────────────────────────────────────────────────
+# Keep generated artifacts and the catalog test case out of GitHub's language
+# bar so the repo reads as Snakemake / Python.
+images/rulegraph.svg    linguist-generated
+.test/**                linguist-generated
+
+# ── Line endings ────────────────────────────────────────────────────────
+# Normalize all text to LF; shell scripts, Snakemake files, the SLURM script and
+# the container recipe MUST stay LF so they work inside the Linux container.
+* text=auto eol=lf
+*.sh        text eol=lf
+*.py        text eol=lf
+*.smk       text eol=lf
+Snakefile   text eol=lf
+*.def       text eol=lf
+*.slurm     text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf

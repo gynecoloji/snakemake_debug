@@ -49,7 +49,7 @@ blast:
 # --- optional step 08: auto-pick the top NON-HOST organism from the analysis
 # (Kraken2 + random-BLAST), fetch its RefSeq genome from NCBI, and align unaligned
 # reads to it. Needs internet -> run on a login node:
-#   apptainer exec ... snakemake -s Snakefile --configfile config.yaml --cores 4 auto_ref_screen
+#   apptainer exec ... snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 4 auto_ref_screen
 auto_ref:
   enabled: false        # add step 08 to `rule all` (login node); or run the target above directly
   min_fraction: 0.05    # min support (fraction of classified/BLAST reads) to accept an organism (skips noise)

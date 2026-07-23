@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Snakemake
+        # The workflow runs inside the Apptainer image; CI only needs Snakemake
+        # itself to build the DAG and validate the config (no rule is executed).
+        run: pip install snakemake
+      - name: Dry run (DAG builds + config validates over .test)
+        run: snakemake -s workflow/Snakefile -d .test -n --cores 1
+      - name: Rule graph resolves (catalog tube map)
+        run: snakemake -s workflow/Snakefile -d .test --rulegraph --cores 1 > /dev/null
+      - name: Lint (informational)
+        continue-on-error: true
+        run: snakemake -s workflow/Snakefile -d .test --lint

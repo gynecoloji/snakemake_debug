@@ -1,0 +1,189 @@
+"$schema": "http://json-schema.org/draft-07/schema#"
+title: Low-alignment / contamination diagnostics — configuration
+description: >-
+  Parameters for the low-alignment / contamination diagnostics workflow. Paths
+  are relative to `project_dir` unless absolute. Optional steps are switched off
+  by leaving their path/flag empty. The schema validates structure and types
+  only (it does not inject defaults); the rules keep their own in-code defaults
+  for omitted optional parameters.
+type: object
+
+properties:
+
+  project_dir:
+    type: string
+    description: Absolute path to your project. All relative paths below resolve under it.
+
+  input:
+    type: object
+    description: Per-sample RAW aligner output (SAM/BAM that still contains unmapped reads).
+    properties:
+      align_dir:
+        type: string
+        description: Directory of raw aligner output (HISAT2/STAR/bwa), NOT a post-filtered unique BAM.
+      align_suffix:
+        type: string
+        description: File suffix selecting the aligned files (".sam" or ".bam").
+      unmapped_flag:
+        type: integer
+        description: SAM flag selecting unmapped reads (typically 4).
+    required: [align_dir, align_suffix, unmapped_flag]
+
+  output_dir:
+    type: string
+    description: Results directory (relative to project_dir, or absolute).
+
+  host_label:
+    type: string
+    description: Host organism name — used for reporting only.
+
+  sampling:
+    type: object
+    description: Caps that bound the sampled steps (02 motif, 03/04 BLAST, 06 Kraken2).
+    properties:
+      unmapped_cap:
+        type: integer
+        minimum: 1
+        description: Max unaligned reads sampled per file (sampled steps only).
+      records_cap:
+        type: integer
+        minimum: 1
+        description: Max alignment records scanned per file (bounds I/O).
+    required: [unmapped_cap, records_cap]
+
+  kraken:
+    type: object
+    description: Kraken2 taxonomic classification (step 06).
+    properties:
+      db:
+        type: string
+        description: Kraken2 DB directory. Empty string -> skip step 06.
+    required: [db]
+
+  contaminant:
+    type: object
+    description: Suspect-genome screen (step 05).
+    properties:
+      reference_fasta:
+        type: string
+        description: Local FASTA of the suspect genome. Empty string -> skip step 05.
+    required: [reference_fasta]
+
+  custom:
+    type: object
+    description: Optional custom-construct screen (step 07).
+    properties:
+      fasta:
+        type: string
+        description: Custom FASTA (transgene / vector / construct). Empty string -> skip step 07.
+
+  blast:
+    type: object
+    description: Remote BLAST of the top and random unaligned sequences (steps 03/04; login node).
+    properties:
+      enabled:
+        type: boolean
+        description: BLAST the most-duplicated unaligned sequences (step 03).
+      random:
+        type: boolean
+        description: Also BLAST random unaligned reads (step 04) to catch species Kraken2/motifs miss.
+      n_random:
+        type: integer
+        minimum: 1
+        description: Random reads sampled per sample for the random BLAST.
+      db:
+        type: string
+        description: BLAST database name (e.g. "nt").
+      max_target_seqs:
+        type: integer
+        minimum: 1
+        description: blastn -max_target_seqs.
+    required: [enabled]
+
+  auto_ref:
+    type: object
+    description: Auto-pick the top non-host organism and align to its RefSeq genome (step 08; login node).
+    properties:
+      enabled:
+        type: boolean
+        description: Add step 08 to the default target.
+      min_fraction:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Minimum support (fraction of classified/BLAST reads) to accept an organism.
+
+  multimap:
+    type: object
+    description: >-
+      Multimapped-read investigation (step 09) — SPIKE-IN SEQUENCING ONLY.
+      Requires enabled AND spikein. Needs the pre-filter alignment to a combined
+      host+spike-in genome.
+    properties:
+      enabled:
+        type: boolean
+        description: Add step 09 (spike-in only; you must also set spikein true).
+      spikein:
+        type: boolean
+        description: Reads were aligned to a combined host+spike-in genome (required for step 09).
+      spikein_prefix:
+        type: string
+        description: Contigs starting with this prefix belong to the spike-in genome.
+      method:
+        type: string
+        enum: [auto, nh, xs, mapq]
+        description: Multimap-detection method.
+      xs_strict:
+        type: boolean
+        description: xs method — require XS == AS (an equally-best second hit) rather than any XS.
+      mapq_max:
+        type: integer
+        minimum: 0
+        description: mapq method / fallback — MAPQ <= this counts as multimapped.
+      align_dir:
+        type: string
+        description: Raw combined host+spike-in alignment dir. Empty -> inherit input.align_dir.
+      align_suffix:
+        type: string
+        description: Suffix for the combined alignment. Empty -> inherit input.align_suffix.
+      cross_genome:
+        type: boolean
+        description: Enable the both-genomes check (needs host_index and spikein_index).
+      host_index:
+        type: string
+        description: bowtie2 index basename, host only.
+      spikein_index:
+        type: string
+        description: bowtie2 index basename, spike-in only.
+      cross_fraction:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: 1.0 = ALL multimapped reads; < 1 samples that fraction.
+      cross_cap:
+        type: integer
+        minimum: 0
+        description: 0 = no cap; > 0 caps sampled reads per file.
+      cross_seed:
+        type: integer
+        description: Sampling seed (used when cross_fraction < 1 or cross_cap > 0).
+      cross_codominant_margin:
+        type: integer
+        minimum: 0
+        description: 'A read is "codominant" when |host AS - spike-in AS| <= this (equally-good = ambiguous).'
+
+  threads:
+    type: integer
+    minimum: 1
+    description: Threads per multi-threaded rule.
+
+required:
+  - project_dir
+  - input
+  - output_dir
+  - host_label
+  - sampling
+  - kraken
+  - contaminant
+  - blast
+  - threads

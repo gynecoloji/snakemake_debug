@@ -1,0 +1,39 @@
+# ============================================================================
+# Low-alignment / contamination diagnostics workflow — Snakemake entry point.
+#
+# Standard-layout workflow (workflow/ + config/). Everything — Snakemake AND
+# every tool (samtools, seqtk, bowtie2, BLAST+, Kraken2, …) — runs INSIDE the
+# single Apptainer image, so a run is:
+#
+#   apptainer exec --cleanenv -B <project> containers/debug_tools.sif \
+#       snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 8
+#
+# See README.md for the two-phase (setup on a login node / run via srun) usage
+# and workflow/documentation.md for the per-step technical reference.
+#
+# Run a subset with a stage aggregator target, e.g.:
+#   snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 8 screens_all
+# ============================================================================
+from snakemake.utils import min_version
+
+# 7.0 is the floor: the `default_target: True` directive (rule all, below) was
+# added in Snakemake 7.0. The bundled container ships snakemake-minimal 7.32.4
+# (its python=3.10 pin predates the 8.x line, which needs python >= 3.11).
+min_version("7.0")
+
+
+configfile: "config/config.yaml"
+
+
+include: "rules/common.smk"
+include: "rules/unaligned.smk"
+include: "rules/blast.smk"
+include: "rules/screens.smk"
+include: "rules/multimap.smk"
+include: "rules/report.smk"
+
+
+rule all:
+    input:
+        FINAL,
+    default_target: True

@@ -1,0 +1,58 @@
+# Catalog test case — paths resolve under .test/ (run with `snakemake ... -d .test`).
+# Every optional step is switched ON so the rule graph (the catalog "tube map")
+# shows all rules. The inputs here are tiny/empty placeholders: the catalog only
+# builds the rule graph (`--rulegraph`) and CI only dry-runs (`-n`), so no rule is
+# ever executed and nothing reads their contents. See README.md.
+project_dir: "."
+
+input:
+  align_dir: "align_stub"          # -> .test/align_stub (relative to project_dir)
+  align_suffix: ".sam"
+  unmapped_flag: 4
+
+output_dir: "results"
+
+host_label: "Homo sapiens"
+
+sampling:
+  unmapped_cap: 1000
+  records_cap: 10000
+
+kraken:
+  db: "kraken_db_stub"             # non-empty -> step 06 rules appear (a param, not a checked input)
+
+contaminant:
+  reference_fasta: "ref/contaminant_stub.fa"   # -> step 05 rules (0-byte placeholder input)
+
+custom:
+  fasta: "ref/custom_stub.fa"                   # -> step 07 rules (0-byte placeholder input)
+
+blast:
+  enabled: true                    # -> step 03 remote-BLAST rule
+  random: true                     # -> step 04 rules
+  n_random: 5
+  db: "nt"
+  max_target_seqs: 5
+
+auto_ref:
+  enabled: true                    # -> step 08 rule
+  min_fraction: 0.05
+
+multimap:
+  enabled: true                    # -> step 09 rules
+  spikein: true
+  spikein_prefix: "spikein_"
+  method: "auto"
+  xs_strict: false
+  mapq_max: 10
+  align_dir: ""
+  align_suffix: ""
+  cross_genome: true               # -> step 09 cross-genome rules
+  host_index: "ref/host_stub"      # a param (not a checked input)
+  spikein_index: "ref/spk_stub"
+  cross_fraction: 1.0
+  cross_cap: 0
+  cross_seed: 13
+  cross_codominant_margin: 5
+
+threads: 1

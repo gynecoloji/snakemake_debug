@@ -2,19 +2,21 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Snakemake](https://img.shields.io/badge/Snakemake-workflow-039475.svg)](https://snakemake.github.io)
+[![CI](https://github.com/gynecoloji/snakemake_debug/actions/workflows/ci.yml/badge.svg)](https://github.com/gynecoloji/snakemake_debug/actions/workflows/ci.yml)
 
 A **reusable, containerized Snakemake workflow** that finds *why some samples align poorly*
 to their reference — most often contamination (bacteria/Mycoplasma), a transgene/vector,
-rRNA, adapter, or degradation. Drop it into any short-read project by editing `config.yaml`.
+rRNA, adapter, or degradation. Drop it into any short-read project by editing `config/config.yaml`.
 
 Everything — Snakemake **and** every tool (samtools, seqtk, bowtie2, BLAST+, Kraken2, …) —
 lives in **one Apptainer image**, so the whole workflow runs as:
 
 ```
-apptainer exec debug_tools.sif snakemake ...
+apptainer exec debug_tools.sif snakemake -s workflow/Snakefile ...
 ```
 
-No host Python, no host Snakemake, no per-tool modules.
+No host Python, no host Snakemake, no per-tool modules. It uses the standard
+Snakemake layout: the workflow lives in `workflow/` and its config in `config/`.
 
 ---
 
@@ -85,22 +87,22 @@ cd snakemake_debug
 # 1. one-time setup on a LOGIN NODE (internet): build container + Kraken2 DB
 ./setup.sh                                  # add --ref-accession GCF_xxx to also fetch a genome
 
-# 2. edit config.yaml  (project_dir, input.align_dir, and paste the kraken.db /
+# 2. edit config/config.yaml  (project_dir, input.align_dir, and paste the kraken.db /
 #    contaminant.reference_fasta paths that setup.sh printed)
 
 # 3. run on a compute node
 sbatch run.slurm                            # edit -A/-p first
 #    ...or interactively:
 #    srun -c 8 --mem 24G apptainer exec --cleanenv -B "$PWD" -B <project_dir> \
-#         containers/debug_tools.sif snakemake --cores 8
+#         containers/debug_tools.sif snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 8
 ```
 
-Results land in the `output_dir` from `config.yaml`; start at `00_SUMMARY.md`.
+Results land in the `output_dir` from `config/config.yaml`; start at `00_SUMMARY.md`.
 
 > **Tip:** do a dry run first to see the DAG without executing anything:
 > ```bash
 > apptainer exec containers/debug_tools.sif \
->     snakemake -s Snakefile --configfile config.yaml -n
+>     snakemake -s workflow/Snakefile --configfile config/config.yaml -n
 > ```
 
 ---
@@ -117,7 +119,7 @@ each named `<sample><suffix>`; the sample name becomes the label in every report
 └── sampleC.sam
 ```
 
-with, in `config.yaml`:
+with, in `config/config.yaml`:
 
 ```yaml
 input:
@@ -173,7 +175,7 @@ runs in phase 1 on the login node:
   Remote **BLAST** (step 03) also needs internet — run it on the login node:
   ```bash
   apptainer exec --cleanenv -B "$PWD" -B <project_dir> containers/debug_tools.sif \
-      snakemake -s Snakefile --configfile config.yaml --cores 4 blast
+      snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 4 blast
   ```
   (set `blast.enabled: true` in config first)
 
@@ -182,7 +184,7 @@ runs in phase 1 on the login node:
   set `blast.random: true` (and `blast.n_random`) and run the `blast_random` target on the login node:
   ```bash
   apptainer exec --cleanenv -B "$PWD" -B <project_dir> containers/debug_tools.sif \
-      snakemake -s Snakefile --configfile config.yaml --cores 4 blast_random
+      snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 4 blast_random
   ```
   Results: `04_blast_random/random_blast_species.tsv` (species → read count) — also shown in `report.html`.
 - **Phase 2 (compute node):** everything else runs offline in the container via `run.slurm`.
@@ -199,7 +201,7 @@ runs in phase 1 on the login node:
 
 `setup.sh` is **idempotent** — it skips anything already present, so it's safe to re-run.
 When it finishes it prints the exact `kraken.db` / `contaminant.reference_fasta` paths to paste
-into `config.yaml`.
+into `config/config.yaml`.
 
 ---
 
@@ -263,7 +265,11 @@ cores; e.g. this project's 6 samples took ~11 min single-end / ~78 min paired-en
 
 ---
 
-## config.yaml reference
+## config/config.yaml reference
+
+Every parameter is also documented, with its type, in the schema
+[`workflow/schemas/config.schema.yaml`](workflow/schemas/config.schema.yaml),
+which validates `config/config.yaml` at the start of every run.
 
 | key | meaning |
 |---|---|
@@ -299,7 +305,7 @@ cores; e.g. this project's 6 samples took ~11 min single-end / ~78 min paired-en
 - [ ] leave `kraken.db`/`contaminant.reference_fasta` empty for a first pass; the run tells you
       the suspect organism, then `./setup.sh --ref-accession <GCF_...>` and re-run for step 05
 - [ ] edit `run.slurm` `-A`/`-p` (and `debug_tools.def` tool list if you want more tools)
-- [ ] extend the motif set in `scripts/extract_unaligned.py` for non-bacterial suspects (vector, mito, rRNA)
+- [ ] extend the motif set in `workflow/scripts/extract_unaligned.py` for non-bacterial suspects (vector, mito, rRNA)
 - [ ] *(optional, spike-in only)* for step 09's cross-genome check, build single-genome bowtie2
       indexes and set `multimap.host_index` / `multimap.spikein_index` (see [Step 09](#step-09-multimapped-reads-spike-in-only))
 
@@ -324,22 +330,64 @@ cores; e.g. this project's 6 samples took ~11 min single-end / ~78 min paired-en
 ## Files
 
 ```
-snakemake_debug/
-├── Snakefile              # the DAG
-├── config.yaml            # <- edit this
-├── setup.sh               # phase-1: build container + download DB/ref (login node)
-├── run.slurm              # phase-2: run everything in the container (compute node)
-├── scripts/               # generic, argparse-based analysis scripts
+snakemake_debug/                # standard Snakemake layout (workflow/ + config/)
+├── config/
+│   ├── config.yaml            # <- edit this
+│   └── README.md              # per-parameter config reference
+├── workflow/
+│   ├── Snakefile              # entry point: min_version, configfile, include: rules
+│   ├── rules/                 # common.smk + topical modules
+│   │                          #   (unaligned / blast / screens / multimap / report)
+│   ├── schemas/
+│   │   └── config.schema.yaml # config validation + parameter docs
+│   ├── scripts/               # generic, argparse-based analysis scripts
+│   └── documentation.md       # per-step technical reference
+├── setup.sh                   # phase-1: build container + download DB/ref (login node)
+├── run.slurm                  # phase-2: run everything in the container (compute node)
 ├── containers/
-│   ├── debug_tools.def    # container recipe (Snakemake + all tools)
-│   └── debug_tools.sif    # built by setup.sh (git-ignored)
-├── refs/                  # Kraken2 DB + reference genomes (created by setup.sh, git-ignored)
-├── docs/METHOD.md         # the conceptual SOP (tool-agnostic)
-├── LICENSE                # MIT
-└── results/               # outputs (git-ignored)
+│   ├── debug_tools.def        # container recipe (Snakemake + all tools)
+│   └── debug_tools.sif        # built by setup.sh (git-ignored)
+├── refs/                      # Kraken2 DB + reference genomes (created by setup.sh, git-ignored)
+├── docs/METHOD.md             # the conceptual SOP (tool-agnostic)
+├── .test/                     # catalog test case (stubbed inputs; CI dry-runs it)
+├── images/rulegraph.svg       # rule graph (catalog "tube map")
+├── .github/workflows/         # CI (dry-run + lint) and release-please
+├── CITATION.cff               # citation metadata (release-please-managed)
+├── CHANGELOG.md               # release history (release-please-managed)
+├── CONTRIBUTING.md            # contribution guide
+├── CODE_OF_CONDUCT.md         # Contributor Covenant
+├── version.txt                # current version (release-please-managed)
+├── LICENSE                    # MIT
+└── results/                   # outputs (git-ignored)
 ```
 
-See `docs/METHOD.md` for the reasoning behind each step and the common-causes table.
+See `docs/METHOD.md` for the reasoning behind each step and the common-causes table,
+and `workflow/documentation.md` for the per-step technical reference.
+
+---
+
+## Rule graph
+
+The full rule dependency graph (the Snakemake Workflow Catalog "tube map") is in
+[`images/rulegraph.svg`](images/rulegraph.svg), rendered from the catalog test
+case in [`.test/`](.test/):
+
+```bash
+snakemake -s workflow/Snakefile -d .test --rulegraph -c 1 | dot -Tsvg > images/rulegraph.svg
+```
+
+---
+
+## Contributing, releases & citation
+
+- **Contributing:** see [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+  [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). CI (`.github/workflows/ci.yml`) dry-runs
+  the workflow over [`.test/`](.test/) and lints it on every push/PR.
+- **Releases:** commits follow [Conventional Commits](https://www.conventionalcommits.org);
+  [release-please](https://github.com/googleapis/release-please) automates the version,
+  [`CHANGELOG.md`](CHANGELOG.md), and GitHub Releases.
+- **Citation:** citation metadata is in [`CITATION.cff`](CITATION.cff) — GitHub renders a
+  "Cite this repository" button from it.
 
 ---
 

@@ -1,0 +1,21 @@
+# Snakemake Workflow Catalog metadata.
+# https://snakemake.github.io/snakemake-workflow-catalog/
+
+usage:
+  mandatory-flags:
+    desc: >
+      This workflow ships its whole software stack (Snakemake AND every tool:
+      samtools, seqtk, bowtie2, BLAST+, Kraken2, …) inside ONE Apptainer image,
+      rather than using per-rule conda environments. Build the image once on a
+      login node with `./setup.sh`, then run everything inside it:
+        apptainer exec --cleanenv -B <project> containers/debug_tools.sif \
+            snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 8
+      There are therefore no mandatory Snakemake deployment flags. Steps 03/04/08
+      (remote BLAST + NCBI genome fetch) need internet — run them on a login node;
+      step 09 (multimapped reads) is spike-in only. See README.md.
+    flags: ""
+  software-stack-deployment:
+    conda: false
+    apptainer: false
+    apptainer+conda: false
+  report: false

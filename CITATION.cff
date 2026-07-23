@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this workflow, please cite it using these metadata."
+title: "snakemake_debug: a low-alignment / contamination diagnostics Snakemake workflow"
+abstract: >-
+  A reusable, containerized Snakemake workflow that diagnoses why short-read
+  samples align poorly to their reference: per-sample alignment rates, motif
+  signatures of the unaligned reads, remote BLAST identification, contaminant-
+  and custom-genome screens, Kraken2 taxonomic classification, auto-selection of
+  the top non-host organism, and a spike-in multimapped-read investigation, with
+  an interactive self-contained HTML report. Everything runs inside one Apptainer
+  image.
+type: software
+authors:
+  - given-names: "Ji"
+    family-names: "Wang"
+    orcid: "https://orcid.org/0000-0003-3443-5857"
+repository-code: "https://github.com/gynecoloji/snakemake_debug"
+url: "https://github.com/gynecoloji/snakemake_debug"
+license: MIT
+keywords:
+  - Snakemake
+  - contamination diagnostics
+  - unaligned reads
+  - multimapping
+  - spike-in sequencing
+  - quality control
+  - bioinformatics workflow
+# `version` + `date-released` are bumped automatically by release-please on each
+# release (via the annotations below) — do not edit them by hand.
+version: "0.1.0" # x-release-please-version
+date-released: "2026-07-22" # x-release-please-date
