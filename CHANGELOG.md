@@ -8,6 +8,13 @@ Going forward this file is maintained automatically by
 [release-please](https://github.com/googleapis/release-please) from Conventional
 Commit messages — do not edit it by hand.
 
+## [0.2.0](https://github.com/gynecoloji/snakemake_debug/compare/v0.1.0...v0.2.0) (2026-07-29)
+
+
+### Added
+
+* standard Snakemake layout, Apptainer container, and catalog template ([81dee9f](https://github.com/gynecoloji/snakemake_debug/commit/81dee9f21241fc072145c2484f0f1049f5648648))
+
 ## [0.1.0] - 2026-07-22
 
 ### Added
