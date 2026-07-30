@@ -372,10 +372,18 @@ and `workflow/documentation.md` for the per-step technical reference.
 
 The full rule dependency graph (the Snakemake Workflow Catalog "tube map") is in
 [`images/rulegraph.svg`](images/rulegraph.svg), rendered from the catalog test
-case in [`.test/`](.test/):
+case in [`.test/`](.test/) with [snakevision](https://github.com/OpenOmics/snakevision):
 
 ```bash
-snakemake -s workflow/Snakefile -d .test --rulegraph -c 1 | dot -Tsvg > images/rulegraph.svg
+# 1. build the rule graph over .test — name the targets BEFORE --rulegraph
+#    (the flag takes an optional value and would otherwise swallow the first target)
+snakemake -s workflow/Snakefile -c 1 -d .test \
+    all unaligned_all blast_all screens_all multimap_all report_all \
+    --forceall --rulegraph > rulegraph.dot
+
+# 2. render the tube map, skipping the aggregator pseudo-targets so only real rules show
+snakevision --skip-rules all unaligned_all blast_all screens_all multimap_all report_all \
+    -o images/rulegraph.svg rulegraph.dot
 ```
 
 ---
