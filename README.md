@@ -1,8 +1,10 @@
 # snakemake_debug — low-alignment / contamination diagnostics
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Snakemake](https://img.shields.io/badge/Snakemake-workflow-039475.svg)](https://snakemake.github.io)
 [![CI](https://github.com/gynecoloji/snakemake_debug/actions/workflows/ci.yml/badge.svg)](https://github.com/gynecoloji/snakemake_debug/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/gynecoloji/snakemake_debug)](https://github.com/gynecoloji/snakemake_debug/releases/latest)
+[![Snakemake](https://img.shields.io/badge/snakemake-%E2%89%A57.0-brightgreen.svg)](https://snakemake.github.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/1289539811.svg)](https://doi.org/10.5281/zenodo.21693794)
 
 A **reusable, containerized Snakemake workflow** that finds *why some samples align poorly*
 to their reference — most often contamination (bacteria/Mycoplasma), a transgene/vector,
@@ -387,7 +389,10 @@ snakemake -s workflow/Snakefile -d .test --rulegraph -c 1 | dot -Tsvg > images/r
   [release-please](https://github.com/googleapis/release-please) automates the version,
   [`CHANGELOG.md`](CHANGELOG.md), and GitHub Releases.
 - **Citation:** citation metadata is in [`CITATION.cff`](CITATION.cff) — GitHub renders a
-  "Cite this repository" button from it.
+  "Cite this repository" button from it. Archived releases are on Zenodo:
+  [![DOI](https://zenodo.org/badge/1289539811.svg)](https://doi.org/10.5281/zenodo.21693794)
+  — the concept DOI ([10.5281/zenodo.21693794](https://doi.org/10.5281/zenodo.21693794))
+  always resolves to the latest version.
 
 ---
 
