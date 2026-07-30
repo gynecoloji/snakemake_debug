@@ -8,6 +8,13 @@ Going forward this file is maintained automatically by
 [release-please](https://github.com/googleapis/release-please) from Conventional
 Commit messages — do not edit it by hand.
 
+## [0.2.1](https://github.com/gynecoloji/snakemake_debug/compare/v0.2.0...v0.2.1) (2026-07-30)
+
+
+### Documentation
+
+* add Zenodo DOI ([8d86df3](https://github.com/gynecoloji/snakemake_debug/commit/8d86df34db73e59d097639025cf9b179a2452ab5))
+
 ## [0.2.0](https://github.com/gynecoloji/snakemake_debug/compare/v0.1.0...v0.2.0) (2026-07-29)
 
 
