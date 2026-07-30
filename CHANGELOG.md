@@ -8,6 +8,13 @@ Going forward this file is maintained automatically by
 [release-please](https://github.com/googleapis/release-please) from Conventional
 Commit messages — do not edit it by hand.
 
+## [0.2.3](https://github.com/gynecoloji/snakemake_debug/compare/v0.2.2...v0.2.3) (2026-07-30)
+
+
+### Documentation
+
+* embed rule graph image in README.md ([2eb7086](https://github.com/gynecoloji/snakemake_debug/commit/2eb7086564fdb98202e450897f6ecc6ac719d7a6))
+
 ## [0.2.2](https://github.com/gynecoloji/snakemake_debug/compare/v0.2.1...v0.2.2) (2026-07-30)
 
 
