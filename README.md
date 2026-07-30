@@ -370,9 +370,13 @@ and `workflow/documentation.md` for the per-step technical reference.
 
 ## Rule graph
 
-The full rule dependency graph (the Snakemake Workflow Catalog "tube map") is in
-[`images/rulegraph.svg`](images/rulegraph.svg), rendered from the catalog test
-case in [`.test/`](.test/) with [snakevision](https://github.com/OpenOmics/snakevision):
+The full rule dependency graph (the Snakemake Workflow Catalog "tube map"), rendered
+with [snakevision](https://github.com/OpenOmics/snakevision) from the catalog test
+case in [`.test/`](.test/):
+
+![Rule graph of the low-alignment / contamination diagnostics workflow](images/rulegraph.svg)
+
+Regenerate it with:
 
 ```bash
 # 1. build the rule graph over .test — name the targets BEFORE --rulegraph
