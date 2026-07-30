@@ -8,6 +8,13 @@ Going forward this file is maintained automatically by
 [release-please](https://github.com/googleapis/release-please) from Conventional
 Commit messages — do not edit it by hand.
 
+## [0.2.2](https://github.com/gynecoloji/snakemake_debug/compare/v0.2.1...v0.2.2) (2026-07-30)
+
+
+### Documentation
+
+* snakevision tube map ([f9a985d](https://github.com/gynecoloji/snakemake_debug/commit/f9a985da8344825cb3396a02dfce6e384103a2ff))
+
 ## [0.2.1](https://github.com/gynecoloji/snakemake_debug/compare/v0.2.0...v0.2.1) (2026-07-30)
 
 
